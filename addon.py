@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Self
 
-from mitmproxy import http
+from mitmproxy.http import HTTPFlow, Response
 from mitmproxy.net.http.url import default_port, parse_authority
 
 # Headers stripped from every request regardless of policy.
@@ -58,7 +58,7 @@ class Policy:
     header_allowlist: tuple[str, ...] | None = None
     header_callback: Callable[[str, str], str | None] | None = field(default=None, hash=False, compare=False)
 
-    def allows_request(self, flow: http.HTTPFlow) -> bool:
+    def allows_request(self, flow: HTTPFlow) -> bool:
         if self.host != flow.request.host:
             return False
         if flow.request.scheme == "http" and not self.http:
@@ -76,7 +76,7 @@ class Policy:
     def allows_connect(self, host: str, port: int) -> bool:
         return (self.host == host) and ((port == 443 and self.https) or (port == 80 and self.http))
 
-    def apply_header_callback(self, flow: http.HTTPFlow):
+    def apply_header_callback(self, flow: HTTPFlow):
         if self.header_callback is None:
             return
 
@@ -93,7 +93,7 @@ class Policy:
                 new_fields.append((name_b, result.encode("utf-8", "surrogateescape")))
         flow.request.headers.fields = tuple(new_fields)
 
-    def filter_headers(self, flow: http.HTTPFlow):
+    def filter_headers(self, flow: HTTPFlow):
         allowlist = self.header_allowlist
         for name in dict.fromkeys(flow.request.headers):
             lower = name.lower()
@@ -212,19 +212,19 @@ class TrafficFilter:
         self.num_blocked = 0
 
     @staticmethod
-    def _flow_url(flow: http.HTTPFlow) -> str:
+    def _flow_url(flow: HTTPFlow) -> str:
         return f"{flow.request.method} {flow.request.scheme}://{flow.request.host}{flow.request.path}"
 
     @staticmethod
     def _handle_block(method):
         @functools.wraps(method)
-        def wrapper(self, flow: http.HTTPFlow):
+        def wrapper(self, flow: HTTPFlow):
             try:
                 method(self, flow)
             except BlockRequest as e:
                 self.num_blocked += 1
                 logging.warning(f"BLOCKED [{self.num_blocked}/{self.num_seen}] {self._flow_url(flow)} — {e}")
-                flow.response = http.Response.make(
+                flow.response = Response.make(
                     403,
                     f"Blocked by traffic policy: {e}",
                     {"Content-Type": "text/plain"},
@@ -232,7 +232,7 @@ class TrafficFilter:
         return wrapper
 
     @_handle_block
-    def http_connect(self, flow: http.HTTPFlow):
+    def http_connect(self, flow: HTTPFlow):
         self.num_seen += 1
 
         # CONNECT target from the request line
@@ -255,7 +255,7 @@ class TrafficFilter:
             raise BlockRequest(f"no policy allows CONNECT to {connect_to!r}:{flow.request.port}")
 
     @_handle_block
-    def requestheaders(self, flow: http.HTTPFlow):
+    def requestheaders(self, flow: HTTPFlow):
         # Ensure Host header is well-formed
         host_hdr = flow.request.headers.get("host")
         if not host_hdr:

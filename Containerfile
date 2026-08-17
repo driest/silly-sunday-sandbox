@@ -69,7 +69,8 @@ RUN apt-get update \
         patchelf \
         binwalk \
         qemu-user \
-        qemu-user-static \
+        qemu-user-binfmt \
+        libqpdf-dev \
         sudo \
     && update-ca-certificates \
     && apt-get clean \
@@ -142,5 +143,11 @@ RUN mkdir -p ~/work \
         echo 'export ANTHROPIC_API_KEY=PLACEHOLDER_API_KEY'; \
         echo 'export UV_NATIVE_TLS=1'; \
     } >> ~/.bashrc
+
+# ── Suppress Claude Code first-run prompts ───────────────────────────────────
+ENV CLAUDE_CODE_SANDBOXED=1
+RUN mkdir -p ~/.claude \
+    && echo '{"theme":"dark","skipDangerousModePermissionPrompt":true}' > ~/.claude/settings.json \
+    && echo '{"hasCompletedOnboarding":true,"numStartups":1,"autoUpdates":false,"lastOnboardingVersion":"1.0.0","lastReleaseNotesSeen":"1.0.0"}' > ~/.claude.json
 COPY --chown=ubuntu:ubuntu sandbox_system_prompt.md /home/ubuntu/.claude/CLAUDE.md
 
